@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>風鳥堂 - 智慧叫貨與多帳號管理系統</title>
-    <!-- Firebase SDK (v9 Moduler translated for CDN) -->
+    <title>風鳥堂 - 智慧叫貨與總部雲端連線系統</title>
+    <!-- Firebase SDK (v9 Compat) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
@@ -323,11 +323,11 @@
             margin-bottom: 6px;
         }
 
-        .line-notify-btn {
-            background: #06c755;
+        .email-notify-btn {
+            background: #1a73e8;
             color: white;
             border: none;
-            padding: 5px 12px;
+            padding: 6px 12px;
             font-size: 11.5px;
             border-radius: 6px;
             cursor: pointer;
@@ -383,7 +383,7 @@
             <input type="password" class="login-input" id="loginPassword" placeholder="請輸入登入密碼">
             <button class="login-btn" onclick="handleLogin()">登入系統</button>
 
-            <span class="sync-badge">☁️ 已連線至專屬 Firebase 雲端資料庫</span>
+            <span class="sync-badge">☁️ 總部信箱：magic-malosing@hotmail.com</span>
 
             <div class="login-hint">
                 💡 <strong>測試帳號說明：</strong><br>
@@ -396,7 +396,7 @@
         <div class="app-header">
             <div class="app-title">
                 <h1 id="appHeaderTitle">風鳥堂叫貨系統</h1>
-                <p id="systemModeLabel">分店模式 (雲端同步中)</p>
+                <p id="systemModeLabel">分店模式 (總部信箱連線)</p>
             </div>
             <button class="logout-btn" onclick="handleLogout()">登出</button>
         </div>
@@ -419,12 +419,14 @@
                 <span>已選叫貨：<strong id="totalQuantity">0</strong> 件</span>
                 <span>品項數：<strong id="itemTypes">0</strong> 項</span>
             </div>
-            <button class="submit-btn" onclick="submitOrderAndExport()">📥 送出訂單並產生檔案通知總部</button>
+            <button class="submit-btn" onclick="submitOrderAndExport()">📥 送出訂單並寄送通知給總部</button>
         </div>
     </div>
 
     <script>
-        // 專屬 Firebase 雲端金鑰已寫死（全平臺零設定直接同步）
+        const HQ_EMAIL = "magic-malosing@hotmail.com";
+
+        // 專屬 Firebase 雲端金鑰
         const firebaseConfig = {
             apiKey: "AIzaSyBAya9kkgVHTMsPLjn0llU1EZ3mLS37TpU",
             authDomain: "windbirdsorder.firebaseapp.com",
@@ -435,15 +437,11 @@
             measurementId: "G-JBTTTELXXV"
         };
 
-        // 初始化 Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         const auth = firebase.auth();
+        auth.signInAnonymously().catch(err => console.log("Auth error:", err));
 
-        // 匿名登入以確保 Firestore 安全規則存取
-        auth.signInAnonymously().catch(err => console.log("Firebase Auth error:", err));
-
-        // 預設品項
         const defaultInventory = [
             { id: 1, name: '斯里蘭卡紅茶包', spec: '600g / 包', stock: 5 },
             { id: 2, name: '高山青茶葉', spec: '600g / 包', stock: 10 },
@@ -458,7 +456,6 @@
         let currentUser = null;
         let currentView = 'order';
 
-        // 監聽雲端庫存變化（秒級即時跨裝置同步）
         db.collection('inventory').doc('main_stock').onSnapshot((doc) => {
             if (doc.exists && doc.data().items) {
                 inventoryData = doc.data().items;
@@ -467,13 +464,8 @@
                 db.collection('inventory').doc('main_stock').set({ items: defaultInventory });
             }
             refreshCurrentPage();
-        }, (err) => {
-            console.error("雲端讀取失敗：", err);
-            inventoryData = defaultInventory;
-            refreshCurrentPage();
         });
 
-        // 監聽雲端訂單紀錄變化
         db.collection('orders').orderBy('timestamp', 'desc').onSnapshot((snapshot) => {
             orderHistory = [];
             snapshot.forEach(doc => {
@@ -489,7 +481,6 @@
             else if (currentView === 'records') renderRecordsPage();
         }
 
-        // 登入邏輯
         function handleLogin() {
             const acc = document.getElementById('loginAccount').value.trim();
             const pwd = document.getElementById('loginPassword').value.trim();
@@ -540,7 +531,7 @@
             const label = document.getElementById('systemModeLabel');
 
             if (view === 'order') {
-                label.innerText = "分店叫貨模式 (雲端連線)";
+                label.innerText = "分店叫貨模式";
                 footer.style.display = 'block';
                 renderOrderPage();
             } else if (view === 'records') {
@@ -548,7 +539,7 @@
                 footer.style.display = 'none';
                 renderRecordsPage();
             } else if (view === 'stock') {
-                label.innerText = "總部庫存管理 (雲端同步)";
+                label.innerText = "總部庫存管理模式";
                 footer.style.display = 'none';
                 renderStockPage();
             }
@@ -572,7 +563,7 @@
                 <div class="alert-banner ${hasShortage ? 'show' : ''}">
                     <div class="alert-title">⚠️ 總部雲端庫存不足警報</div>
                     <div class="alert-desc">${shortageDetails}</div>
-                    <button class="line-notify-btn" onclick="sendLineAlert()">🟢 一鍵 LINE 通知總部</button>
+                    <button class="email-notify-btn" onclick="sendEmailAlert()">📧 一鍵發送庫存告急信件給總部</button>
                 </div>
             `;
 
@@ -638,7 +629,6 @@
             container.innerHTML = html;
         }
 
-        // 修改庫存直接推送到 Firebase 雲端
         function updateStock(id, val) {
             const newStock = parseInt(val) || 0;
             const updatedItems = inventoryData.map(item => {
@@ -656,7 +646,7 @@
             }
 
             let html = '';
-            orderHistory.forEach((record, index) => {
+            orderHistory.forEach((record) => {
                 let itemsText = record.items.map(i => `${i.name} × ${i.qty}`).join('<br>');
                 html += `
                     <div class="record-card">
@@ -673,16 +663,20 @@
             container.innerHTML = html;
         }
 
-        function sendLineAlert() {
-            let shortageText = "【⚠️ 風鳥堂庫存不足警報】\n分店：林口中山店\n回報狀態：以下品項雲端庫存不足，請總部盡速補貨！";
+        function sendEmailAlert() {
+            let subject = encodeURIComponent("【⚠️ 風鳥堂庫存不足告急通知】林口中山店");
+            let bodyText = "【風鳥堂總部 - 庫存告急警報】\n分店：林口中山店\n以下品項庫存不足，請總部盡速安排補貨：\n\n";
+            
             inventoryData.forEach(p => {
                 let qty = orderQtyMap[p.id] || 0;
                 if ((p.stock - qty) <= 0) {
-                    shortageText += `\n- ${p.name} (剩餘庫存: ${p.stock})`;
+                    bodyText += `- ${p.name} (規格: ${p.spec}, 目前雲端庫存: ${p.stock})\n`;
                 }
             });
-            let lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(shortageText)}`;
-            window.open(lineUrl, '_blank');
+
+            bodyText += "\n此信件由風鳥堂智慧叫貨系統自動觸發。";
+            let mailtoUrl = `mailto:${HQ_EMAIL}?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+            window.location.href = mailtoUrl;
         }
 
         function submitOrderAndExport() {
@@ -693,7 +687,6 @@
                 let qty = orderQtyMap[p.id] || 0;
                 if (qty > 0) {
                     activeItems.push({ name: p.name, spec: p.spec, qty: qty });
-                    // 自動扣除庫存
                     updatedItems[idx].stock = Math.max(0, updatedItems[idx].stock - qty);
                 }
             });
@@ -710,13 +703,13 @@
                 items: activeItems
             };
 
-            // 寫入雲端 Firebase
+            // 寫入雲端
             db.collection('orders').add(orderRecord);
             db.collection('inventory').doc('main_stock').set({ items: updatedItems });
 
-            // 下載叫貨單 .txt
+            // 產生 txt 檔案下載
             let fileContent = "====================================\n";
-            fileContent += "   風鳥堂 - 分店叫貨通知單 (雲端連線)\n";
+            fileContent += "   風鳥堂 - 分店叫貨通知單\n";
             fileContent += "   分店：" + orderRecord.store + "\n";
             fileContent += "   時間：" + orderRecord.time + "\n";
             fileContent += "====================================\n\n";
@@ -736,8 +729,22 @@
             a.click();
             document.body.removeChild(a);
 
+            // 自動準備寄送 Email 給總部 magic-malosing@hotmail.com
+            let subject = encodeURIComponent(`【📦 風鳥堂分店叫貨單】${orderRecord.store} (${orderRecord.time})`);
+            let bodyText = `【風鳥堂分店叫貨通知】\n分店：${orderRecord.store}\n叫貨時間：${orderRecord.time}\n\n叫貨明細：\n`;
+            activeItems.forEach(i => {
+                bodyText += `- ${i.name} (${i.spec}) × ${i.qty}\n`;
+            });
+            bodyText += `\n(系統已同步扣除雲端庫存，並下載叫貨單文字檔)";`;
+
+            let mailtoUrl = `mailto:${HQ_EMAIL}?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+            
+            setTimeout(() => {
+                window.location.href = mailtoUrl;
+            }, 500);
+
             orderQtyMap = {};
-            alert('✅ 訂單已上傳雲端，庫存已即時扣除，並成功下載叫貨單檔案！');
+            alert('✅ 訂單已上傳雲端並扣除庫存，叫貨單已下載，即將自動轉發 Email 給總部！');
             switchView('records');
         }
     </script>

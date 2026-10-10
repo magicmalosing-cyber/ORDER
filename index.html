@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>風鳥堂 - 智慧叫貨與庫存管理系統 (LINE版)</title>
+    <title>風鳥堂 - 智慧叫貨與庫存管理系統</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
 
@@ -308,24 +308,34 @@
     </div>
 
     <script>
-        let inventoryData = [
-            { id: 1, name: '斯里蘭卡紅茶包', spec: '600g / 包', stock: 5, orderQty: 0 },
-            { id: 2, name: '高山青茶葉', spec: '600g / 包', stock: 10, orderQty: 0 },
-            { id: 3, name: '特級茉莉綠茶', spec: '600g / 包', stock: 3, orderQty: 0 },
-            { id: 4, name: '手作黑糖漿', spec: '5kg / 桶', stock: 8, orderQty: 0 },
-            { id: 5, name: 'Q彈珍珠', spec: '3kg / 包', stock: 2, orderQty: 0 }
+        // 預設商品與庫存資料（支援 LocalStorage 持久化儲存）
+        let defaultInventory = [
+            { id: 1, name: '斯里蘭卡紅茶包', spec: '600g / 包', stock: 5 },
+            { id: 2, name: '高山青茶葉', spec: '600g / 包', stock: 10 },
+            { id: 3, name: '特級茉莉綠茶', spec: '600g / 包', stock: 3 },
+            { id: 4, name: '手作黑糖漿', spec: '5kg / 桶', stock: 8 },
+            { id: 5, name: 'Q彈珍珠', spec: '3kg / 包', stock: 2 }
         ];
 
-        let orderHistory = [];
+        // 從本地端讀取資料（若無則初始化）
+        let inventoryData = JSON.parse(localStorage.getItem('wbc_inventory')) || defaultInventory;
+        let orderQtyMap = {}; // 記錄當前叫貨量
+        let orderHistory = JSON.parse(localStorage.getItem('wbc_history')) || [];
+
         let secretClickCount = 0;
         let isStockUnlocked = false;
+
+        function saveToStorage() {
+            localStorage.setItem('wbc_inventory', JSON.stringify(inventoryData));
+            localStorage.setItem('wbc_history', JSON.stringify(orderHistory));
+        }
 
         function handleSecretClick() {
             secretClickCount++;
             if (secretClickCount >= 5 && !isStockUnlocked) {
                 isStockUnlocked = true;
                 document.getElementById('tabStock').style.display = 'block';
-                alert('🔓 已解鎖總部庫存管理模式！');
+                alert('🔓 已解鎖總部庫存管理 App 模式！');
                 switchView('stock');
                 secretClickCount = 0;
             } else if (secretClickCount >= 5) {
@@ -365,10 +375,11 @@
             let shortageDetails = '';
 
             inventoryData.forEach(p => {
-                let remaining = p.stock - p.orderQty;
+                let qty = orderQtyMap[p.id] || 0;
+                let remaining = p.stock - qty;
                 if (remaining <= 0) {
                     hasShortage = true;
-                    shortageDetails += `• <strong>${p.name}</strong> 庫存不足（現有庫存：${p.stock}，欲叫：${p.orderQty}）<br>`;
+                    shortageDetails += `• <strong>${p.name}</strong> 庫存不足（現有庫存：${p.stock}，欲叫：${qty}）<br>`;
                 }
             });
 
@@ -381,7 +392,8 @@
             `;
 
             inventoryData.forEach(p => {
-                let remaining = p.stock - p.orderQty;
+                let qty = orderQtyMap[p.id] || 0;
+                let remaining = p.stock - qty;
                 html += `
                     <div class="product-card">
                         <div class="product-info">
@@ -390,7 +402,7 @@
                         </div>
                         <div class="qty-control">
                             <button class="qty-btn" onclick="updateOrderQty(${p.id}, -1)">-</button>
-                            <span class="qty-num">${p.orderQty}</span>
+                            <span class="qty-num">${qty}</span>
                             <button class="qty-btn" onclick="updateOrderQty(${p.id}, 1)">+</button>
                         </div>
                     </div>
@@ -402,20 +414,19 @@
         }
 
         function updateOrderQty(id, change) {
-            const p = inventoryData.find(item => item.id === id);
-            if (p) {
-                p.orderQty = Math.max(0, p.orderQty + change);
-                renderOrderPage();
-            }
+            let current = orderQtyMap[id] || 0;
+            orderQtyMap[id] = Math.max(0, current + change);
+            renderOrderPage();
         }
 
         function updateSummary() {
             let totalTypes = 0;
             let totalQty = 0;
             inventoryData.forEach(p => {
-                if (p.orderQty > 0) {
+                let qty = orderQtyMap[p.id] || 0;
+                if (qty > 0) {
                     totalTypes++;
-                    totalQty += p.orderQty;
+                    totalQty += qty;
                 }
             });
             document.getElementById('totalQuantity').innerText = totalQty;
@@ -424,7 +435,7 @@
 
         function renderStockPage() {
             const container = document.getElementById('mainContent');
-            let html = `<div style="font-size:13px; font-weight:700; color:#5c181f; margin-bottom:10px;">📦 總部統一庫存設定</div>`;
+            let html = `<div style="font-size:13px; font-weight:700; color:#5c181f; margin-bottom:10px;">📦 總部統一庫存管理 (修改後自動儲存)</div>`;
             
             inventoryData.forEach(p => {
                 html += `
@@ -446,6 +457,7 @@
             const p = inventoryData.find(item => item.id === id);
             if(p) {
                 p.stock = parseInt(val) || 0;
+                saveToStorage();
             }
         }
 
@@ -475,12 +487,12 @@
             container.innerHTML = html;
         }
 
-        // 一鍵透過 LINE 傳送給總部
         function sendLineAlert() {
             let shortageText = "【⚠️ 風鳥堂庫存不足警報】\n分店：林口中山店\n回報狀態：以下品項庫存不足，請總部盡速補貨！";
             
             inventoryData.forEach(p => {
-                if ((p.stock - p.orderQty) <= 0) {
+                let qty = orderQtyMap[p.id] || 0;
+                if ((p.stock - qty) <= 0) {
                     shortageText += `\n- ${p.name} (庫存剩餘: ${p.stock})`;
                 }
             });
@@ -490,24 +502,28 @@
         }
 
         function submitOrderAndExport() {
-            let activeItems = inventoryData.filter(p => p.orderQty > 0);
+            let activeItems = [];
+            inventoryData.forEach(p => {
+                let qty = orderQtyMap[p.id] || 0;
+                if (qty > 0) {
+                    activeItems.push({ name: p.name, spec: p.spec, qty: qty });
+                    // 自動扣除總部庫存
+                    p.stock = Math.max(0, p.stock - qty);
+                }
+            });
+
             if (activeItems.length === 0) {
                 alert('請先選擇至少一項叫貨數量！');
                 return;
             }
 
-            inventoryData.forEach(p => {
-                if (p.orderQty > 0) {
-                    p.stock = Math.max(0, p.stock - p.orderQty);
-                }
-            });
-
             let orderRecord = {
                 store: '林口中山店',
                 time: new Date().toLocaleString(),
-                items: activeItems.map(p => ({ name: p.name, qty: p.orderQty }))
+                items: activeItems
             };
             orderHistory.push(orderRecord);
+            saveToStorage(); // 儲存至本機
 
             let fileContent = "====================================\n";
             fileContent += "   風鳥堂 - 分店叫貨通知單\n";
@@ -515,9 +531,9 @@
             fileContent += "   時間：" + orderRecord.time + "\n";
             fileContent += "====================================\n\n";
 
-            activeItems.forEach(p => {
-                fileContent += `[品名] ${p.name} (${p.spec})\n`;
-                fileContent += `[叫貨數量] ${p.orderQty}\n`;
+            activeItems.forEach(i => {
+                fileContent += `[品名] ${i.name} (${i.spec})\n`;
+                fileContent += `[叫貨數量] ${i.qty}\n`;
                 fileContent += "------------------------------------\n";
             });
 
@@ -530,8 +546,8 @@
             a.click();
             document.body.removeChild(a);
 
-            inventoryData.forEach(p => p.orderQty = 0);
-            alert('✅ 訂單已送出，庫存已自動扣除，並已下載叫貨單檔案！');
+            orderQtyMap = {}; // 清空叫貨車
+            alert('✅ 訂單已送出，庫存已自動扣除並持久化儲存，並已下載叫貨單檔案！');
             switchView('records');
         }
 

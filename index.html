@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>風鳥堂 - 智慧叫貨與多帳號管理系統</title>
+    <!-- Firebase SDK (v9 Moduler translated for CDN) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
 
@@ -73,7 +78,7 @@
         .login-subtitle {
             font-size: 12px;
             color: #8c7662;
-            margin-bottom: 30px;
+            margin-bottom: 25px;
             letter-spacing: 1px;
         }
 
@@ -112,6 +117,17 @@
             border-radius: 6px;
             width: 100%;
             text-align: left;
+        }
+
+        .sync-badge {
+            display: inline-block;
+            background: #e6f4ea;
+            color: #137333;
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-top: 8px;
+            font-weight: bold;
         }
 
         /* App 內部樣式 */
@@ -347,8 +363,11 @@
             box-shadow: 0 4px 12px rgba(92, 24, 31, 0.2);
         }
 
-        .submit-btn:hover {
-            background: #742028;
+        .loading-spin {
+            text-align: center;
+            color: #8c7662;
+            font-size: 13px;
+            padding: 30px;
         }
     </style>
 </head>
@@ -364,6 +383,8 @@
             <input type="password" class="login-input" id="loginPassword" placeholder="請輸入登入密碼">
             <button class="login-btn" onclick="handleLogin()">登入系統</button>
 
+            <span class="sync-badge">☁️ 已連線至專屬 Firebase 雲端資料庫</span>
+
             <div class="login-hint">
                 💡 <strong>測試帳號說明：</strong><br>
                 • 分店登入：帳號 <code style="color:#5c181f">linkou</code> / 密碼 <code style="color:#5c181f">1234</code><br>
@@ -375,7 +396,7 @@
         <div class="app-header">
             <div class="app-title">
                 <h1 id="appHeaderTitle">風鳥堂叫貨系統</h1>
-                <p id="systemModeLabel">分店模式</p>
+                <p id="systemModeLabel">分店模式 (雲端同步中)</p>
             </div>
             <button class="logout-btn" onclick="handleLogout()">登出</button>
         </div>
@@ -388,7 +409,9 @@
         </div>
 
         <!-- 主內容區 -->
-        <div class="content-area" id="mainContent"></div>
+        <div class="content-area" id="mainContent">
+            <div class="loading-spin">☁️ 雲端資料同步中...</div>
+        </div>
 
         <!-- 底部區塊 -->
         <div class="app-footer" id="appFooter">
@@ -401,8 +424,27 @@
     </div>
 
     <script>
-        // 資料初始化與本地儲存
-        let defaultInventory = [
+        // 專屬 Firebase 雲端金鑰已寫死（全平臺零設定直接同步）
+        const firebaseConfig = {
+            apiKey: "AIzaSyBAya9kkgVHTMsPLjn0llU1EZ3mLS37TpU",
+            authDomain: "windbirdsorder.firebaseapp.com",
+            projectId: "windbirdsorder",
+            storageBucket: "windbirdsorder.firebasestorage.app",
+            messagingSenderId: "781661616278",
+            appId: "1:781661616278:web:f374f38c9f260fa05baab7",
+            measurementId: "G-JBTTTELXXV"
+        };
+
+        // 初始化 Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // 匿名登入以確保 Firestore 安全規則存取
+        auth.signInAnonymously().catch(err => console.log("Firebase Auth error:", err));
+
+        // 預設品項
+        const defaultInventory = [
             { id: 1, name: '斯里蘭卡紅茶包', spec: '600g / 包', stock: 5 },
             { id: 2, name: '高山青茶葉', spec: '600g / 包', stock: 10 },
             { id: 3, name: '特級茉莉綠茶', spec: '600g / 包', stock: 3 },
@@ -410,14 +452,41 @@
             { id: 5, name: 'Q彈珍珠', spec: '3kg / 包', stock: 2 }
         ];
 
-        let inventoryData = JSON.parse(localStorage.getItem('wbc_inventory')) || defaultInventory;
+        let inventoryData = [];
         let orderQtyMap = {};
-        let orderHistory = JSON.parse(localStorage.getItem('wbc_history')) || [];
-        let currentUser = null; // 記錄當前登入者
+        let orderHistory = [];
+        let currentUser = null;
+        let currentView = 'order';
 
-        function saveData() {
-            localStorage.setItem('wbc_inventory', JSON.stringify(inventoryData));
-            localStorage.setItem('wbc_history', JSON.stringify(orderHistory));
+        // 監聽雲端庫存變化（秒級即時跨裝置同步）
+        db.collection('inventory').doc('main_stock').onSnapshot((doc) => {
+            if (doc.exists && doc.data().items) {
+                inventoryData = doc.data().items;
+            } else {
+                inventoryData = defaultInventory;
+                db.collection('inventory').doc('main_stock').set({ items: defaultInventory });
+            }
+            refreshCurrentPage();
+        }, (err) => {
+            console.error("雲端讀取失敗：", err);
+            inventoryData = defaultInventory;
+            refreshCurrentPage();
+        });
+
+        // 監聽雲端訂單紀錄變化
+        db.collection('orders').orderBy('timestamp', 'desc').onSnapshot((snapshot) => {
+            orderHistory = [];
+            snapshot.forEach(doc => {
+                orderHistory.push(doc.data());
+            });
+            if (currentView === 'records') renderRecordsPage();
+        });
+
+        function refreshCurrentPage() {
+            if (!currentUser) return;
+            if (currentView === 'order') renderOrderPage();
+            else if (currentView === 'stock') renderStockPage();
+            else if (currentView === 'records') renderRecordsPage();
         }
 
         // 登入邏輯
@@ -451,16 +520,17 @@
 
             if (currentUser.role === 'hq') {
                 titleEl.innerText = "風鳥堂總部後台";
-                stockTab.style.display = 'block'; // 總部直接顯示庫存管理
+                stockTab.style.display = 'block';
                 switchView('stock');
             } else {
                 titleEl.innerText = "風鳥堂（林口中山店）";
-                stockTab.style.display = 'none'; // 分店隱藏庫存管理
+                stockTab.style.display = 'none';
                 switchView('order');
             }
         }
 
         function switchView(view) {
+            currentView = view;
             document.getElementById('tabOrder').classList.toggle('active', view === 'order');
             document.getElementById('tabRecords').classList.toggle('active', view === 'records');
             const stockBtn = document.getElementById('tabStock');
@@ -470,7 +540,7 @@
             const label = document.getElementById('systemModeLabel');
 
             if (view === 'order') {
-                label.innerText = "分店叫貨模式";
+                label.innerText = "分店叫貨模式 (雲端連線)";
                 footer.style.display = 'block';
                 renderOrderPage();
             } else if (view === 'records') {
@@ -478,7 +548,7 @@
                 footer.style.display = 'none';
                 renderRecordsPage();
             } else if (view === 'stock') {
-                label.innerText = "總部庫存管理模式";
+                label.innerText = "總部庫存管理 (雲端同步)";
                 footer.style.display = 'none';
                 renderStockPage();
             }
@@ -494,13 +564,13 @@
                 let remaining = p.stock - qty;
                 if (remaining <= 0) {
                     hasShortage = true;
-                    shortageDetails += `• <strong>${p.name}</strong> 庫存不足（現有：${p.stock}，欲叫：${qty}）<br>`;
+                    shortageDetails += `• <strong>${p.name}</strong> 庫存不足（雲端剩餘：${p.stock}，欲叫：${qty}）<br>`;
                 }
             });
 
             let html = `
                 <div class="alert-banner ${hasShortage ? 'show' : ''}">
-                    <div class="alert-title">⚠️ 總部庫存不足警報</div>
+                    <div class="alert-title">⚠️ 總部雲端庫存不足警報</div>
                     <div class="alert-desc">${shortageDetails}</div>
                     <button class="line-notify-btn" onclick="sendLineAlert()">🟢 一鍵 LINE 通知總部</button>
                 </div>
@@ -513,7 +583,7 @@
                     <div class="product-card">
                         <div class="product-info">
                             <h3>${p.name}</h3>
-                            <p>規格：${p.spec} | 庫存：<span style="color:${remaining<=0?'red':'inherit'}; font-weight:bold;">${remaining}</span></p>
+                            <p>規格：${p.spec} | 雲端庫存：<span style="color:${remaining<=0?'red':'#5c181f'}; font-weight:bold;">${remaining}</span></p>
                         </div>
                         <div class="qty-control">
                             <button class="qty-btn" onclick="updateOrderQty(${p.id}, -1)">-</button>
@@ -550,7 +620,7 @@
 
         function renderStockPage() {
             const container = document.getElementById('mainContent');
-            let html = `<div style="font-size:13px; font-weight:700; color:#5c181f; margin-bottom:10px;">📦 總部統一庫存管理 (修改後即時同步)</div>`;
+            let html = `<div style="font-size:13px; font-weight:700; color:#5c181f; margin-bottom:10px;">📦 總部統一雲端庫存 (修改後全台即時同步)</div>`;
             
             inventoryData.forEach(p => {
                 html += `
@@ -568,28 +638,30 @@
             container.innerHTML = html;
         }
 
+        // 修改庫存直接推送到 Firebase 雲端
         function updateStock(id, val) {
-            const p = inventoryData.find(item => item.id === id);
-            if(p) {
-                p.stock = parseInt(val) || 0;
-                saveData();
-            }
+            const newStock = parseInt(val) || 0;
+            const updatedItems = inventoryData.map(item => {
+                if (item.id === id) return { ...item, stock: newStock };
+                return item;
+            });
+            db.collection('inventory').doc('main_stock').set({ items: updatedItems });
         }
 
         function renderRecordsPage() {
             const container = document.getElementById('mainContent');
             if (orderHistory.length === 0) {
-                container.innerHTML = `<div style="text-align:center; color:#8c7662; margin-top:40px;">目前尚無歷史訂貨紀錄</div>`;
+                container.innerHTML = `<div style="text-align:center; color:#8c7662; margin-top:40px;">目前尚無雲端訂貨紀錄</div>`;
                 return;
             }
 
             let html = '';
-            orderHistory.slice().reverse().forEach((record, index) => {
+            orderHistory.forEach((record, index) => {
                 let itemsText = record.items.map(i => `${i.name} × ${i.qty}`).join('<br>');
                 html += `
                     <div class="record-card">
                         <div class="record-header">
-                            <span>訂單 #${orderHistory.length - index} (${record.store})</span>
+                            <span>訂單 (${record.store})</span>
                             <span>${record.time}</span>
                         </div>
                         <div class="record-body">
@@ -602,11 +674,11 @@
         }
 
         function sendLineAlert() {
-            let shortageText = "【⚠️ 風鳥堂庫存不足警報】\n分店：林口中山店\n回報狀態：以下品項庫存不足，請總部盡速補貨！";
+            let shortageText = "【⚠️ 風鳥堂庫存不足警報】\n分店：林口中山店\n回報狀態：以下品項雲端庫存不足，請總部盡速補貨！";
             inventoryData.forEach(p => {
                 let qty = orderQtyMap[p.id] || 0;
                 if ((p.stock - qty) <= 0) {
-                    shortageText += `\n- ${p.name} (庫存剩餘: ${p.stock})`;
+                    shortageText += `\n- ${p.name} (剩餘庫存: ${p.stock})`;
                 }
             });
             let lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(shortageText)}`;
@@ -615,11 +687,14 @@
 
         function submitOrderAndExport() {
             let activeItems = [];
-            inventoryData.forEach(p => {
+            let updatedItems = [...inventoryData];
+
+            inventoryData.forEach((p, idx) => {
                 let qty = orderQtyMap[p.id] || 0;
                 if (qty > 0) {
                     activeItems.push({ name: p.name, spec: p.spec, qty: qty });
-                    p.stock = Math.max(0, p.stock - qty);
+                    // 自動扣除庫存
+                    updatedItems[idx].stock = Math.max(0, updatedItems[idx].stock - qty);
                 }
             });
 
@@ -631,13 +706,17 @@
             let orderRecord = {
                 store: currentUser ? currentUser.name : '林口中山店',
                 time: new Date().toLocaleString(),
+                timestamp: Date.now(),
                 items: activeItems
             };
-            orderHistory.push(orderRecord);
-            saveData();
 
+            // 寫入雲端 Firebase
+            db.collection('orders').add(orderRecord);
+            db.collection('inventory').doc('main_stock').set({ items: updatedItems });
+
+            // 下載叫貨單 .txt
             let fileContent = "====================================\n";
-            fileContent += "   風鳥堂 - 分店叫貨通知單\n";
+            fileContent += "   風鳥堂 - 分店叫貨通知單 (雲端連線)\n";
             fileContent += "   分店：" + orderRecord.store + "\n";
             fileContent += "   時間：" + orderRecord.time + "\n";
             fileContent += "====================================\n\n";
@@ -658,7 +737,7 @@
             document.body.removeChild(a);
 
             orderQtyMap = {};
-            alert('✅ 訂單已送出，庫存已自動扣除並儲存，並已下載叫貨單檔案！');
+            alert('✅ 訂單已上傳雲端，庫存已即時扣除，並成功下載叫貨單檔案！');
             switchView('records');
         }
     </script>

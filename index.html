@@ -413,7 +413,7 @@
         const auth = firebase.auth();
         auth.signInAnonymously().catch(err => console.log("Auth error:", err));
 
-        // 完整叫貨品項清單（包含價格與分類）
+        // 完整叫貨品項清單（109項）
         const fullCatalog = [
             // 第一欄：茶葉與粉類原物料
             { id: 1, name: '伯爵紅茶', price: 375, category: '🌿 茶葉與粉類原物料', stock: 10 },
@@ -536,20 +536,21 @@
         let orderHistory = [];
         let currentUser = null;
         let currentView = 'order';
+        let isSyncingStock = false; // 防覆蓋鎖定開關
 
-        // 直接強制更新為最新的 109 項全品項
-        inventoryData = fullCatalog;
-        db.collection('inventory').doc('main_stock').set({ items: fullCatalog });
-        refreshCurrentPage();
-
-        db.collection('orders').orderBy('timestamp', 'desc').onSnapshot((snapshot) => {
-            orderHistory = [];
-            snapshot.forEach(doc => {
-                orderHistory.push(doc.data());
-            });
-            if (currentView === 'records') renderRecordsPage();
+        // 雲端監聽庫存
+        db.collection('inventory').doc('main_stock').onSnapshot((doc) => {
+            if (isSyncingStock) return; // 正在送出時暫時忽略雲端回傳
+            if (doc.exists && doc.data().items) {
+                inventoryData = doc.data().items;
+            } else {
+                inventoryData = fullCatalog;
+                db.collection('inventory').doc('main_stock').set({ items: fullCatalog });
+            }
+            refreshCurrentPage();
         });
 
+        // 雲端監聽訂單紀錄
         db.collection('orders').orderBy('timestamp', 'desc').onSnapshot((snapshot) => {
             orderHistory = [];
             snapshot.forEach(doc => {
@@ -722,7 +723,6 @@
 
             let html = '';
             orderHistory.forEach((record) => {
-                // 防呆保護：避免舊訂單沒有 items 或 totalPrice 導致報錯
                 let items = record.items || [];
                 let totalPrice = record.totalPrice || 0;
 
@@ -749,7 +749,7 @@
 
         function submitOrderAndExport() {
             let activeItems = [];
-            let updatedItems = [...inventoryData];
+            let updatedItems = JSON.parse(JSON.stringify(inventoryData)); // 深拷貝
             let totalPrice = 0;
 
             inventoryData.forEach((p, idx) => {
@@ -767,6 +767,10 @@
                 return;
             }
 
+            // 鎖定監聽，防止被雲端舊資料覆蓋
+            isSyncingStock = true;
+            inventoryData = updatedItems;
+
             let orderRecord = {
                 store: currentUser ? currentUser.name : '林口中山店',
                 time: new Date().toLocaleString(),
@@ -774,11 +778,12 @@
                 items: activeItems,
                 totalPrice: totalPrice
             };
-            
-            // 寫入雲端並立即更新本地端變數，防止監聽覆蓋
-            inventoryData = updatedItems;
+
+            // 寫入雲端訂單並更新庫存
             db.collection('orders').add(orderRecord);
-            db.collection('inventory').doc('main_stock').set({ items: updatedItems });
+            db.collection('inventory').doc('main_stock').set({ items: updatedItems }).then(() => {
+                setTimeout(() => { isSyncingStock = false; }, 1200); // 解除鎖定
+            });
 
             // 產生 txt 檔案下載
             let fileContent = "====================================\n";

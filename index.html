@@ -8,6 +8,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+    <!-- EmailJS SDK -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
@@ -394,7 +396,7 @@
             <input type="password" class="login-input" id="loginPassword" placeholder="請輸入登入密碼">
             <button class="login-btn" onclick="handleLogin()">登入系統</button>
 
-            <span class="sync-badge">☁️ 總部信箱：magic-malosing@hotmail.com</span>
+            <span class="sync-badge">☁️ 總部雲端自動發信已啟用</span>
 
             <div class="login-hint">
                 💡 <strong>測試帳號說明：</strong><br>
@@ -407,7 +409,7 @@
         <div class="app-header">
             <div class="app-title">
                 <h1 id="appHeaderTitle">風鳥堂叫貨系統</h1>
-                <p id="systemModeLabel">分店模式 (總部信箱連線)</p>
+                <p id="systemModeLabel">分店模式 (總部雲端連線)</p>
             </div>
             <button class="logout-btn" onclick="handleLogout()">登出</button>
         </div>
@@ -430,12 +432,18 @@
                 <span>已選叫貨：<strong id="totalQuantity">0</strong> 件</span>
                 <span>總金額：<strong id="totalPrice" style="color:#5c181f;">$0</strong> 元</span>
             </div>
-            <button class="submit-btn" onclick="submitOrderAndExport()">📥 送出訂單並寄送通知給總部</button>
+            <button class="submit-btn" onclick="submitOrderAndExport()">📥 送出訂單並自動發信給總部</button>
         </div>
     </div>
 
     <script>
-        const HQ_EMAIL = "magic-malosing@hotmail.com";
+        // EmailJS 初始化與配置
+        (function(){
+            emailjs.init("4BqFHzVumH46sFNtb");
+        })();
+
+        const EMAIL_SERVICE_ID = "service_7iin02f";
+        const EMAIL_TEMPLATE_ID = "template_yb1jcbk";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBAya9kkgVHTMsPLjn0llU1EZ3mLS37TpU",
@@ -454,7 +462,6 @@
 
         // 完整叫貨品項清單（109項）
         const fullCatalog = [
-            // 第一欄：茶葉與粉類原物料
             { id: 1, name: '伯爵紅茶', price: 375, category: '🌿 茶葉與粉類原物料', stock: 10 },
             { id: 2, name: '528 四季春綠', price: 245, category: '🌿 茶葉與粉類原物料', stock: 10 },
             { id: 3, name: '撻靼蕎麥綠', price: 764, category: '🌿 茶葉與粉類原物料', stock: 10 },
@@ -493,7 +500,6 @@
             { id: 36, name: '桂圓紅棗', price: 350, category: '🌿 茶葉與粉類原物料', stock: 10 },
             { id: 37, name: '黑糖薑母', price: 380, category: '🌿 茶葉與粉類原物料', stock: 10 },
 
-            // 第二欄：果汁、配料、提袋與吸管
             { id: 38, name: '荔枝椰果', price: 190, category: '🧋 果汁、配料與提袋', stock: 10 },
             { id: 39, name: '蘆薈', price: 350, category: '🧋 果汁、配料與提袋', stock: 10 },
             { id: 40, name: '芋丁漿', price: 168, category: '🧋 果汁、配料與提袋', stock: 10 },
@@ -536,7 +542,6 @@
             { id: 77, name: '吸管(冰砂)', price: 550, category: '🧋 果汁、配料與提袋', stock: 10 },
             { id: 78, name: '吸管(粗)', price: 550, category: '🧋 果汁、配料與提袋', stock: 10 },
 
-            // 第三欄：包材、耗材、制服、器具與新品
             { id: 79, name: '封膜(霧膜大)', price: 910, category: '📦 包材、制服與器具', stock: 10 },
             { id: 80, name: '封膜(霧膜小)', price: 680, category: '📦 包材、制服與器具', stock: 10 },
             { id: 81, name: '750 紙杯(私版)', price: 2200, category: '📦 包材、制服與器具', stock: 10 },
@@ -687,7 +692,7 @@
                 <div class="alert-banner ${hasShortage ? 'show' : ''}">
                     <div class="alert-title">⚠️ 總部雲端庫存不足警報</div>
                     <div class="alert-desc">${shortageDetails}</div>
-                    <button class="email-notify-btn" onclick="sendEmailAlert()">📧 一鍵發送庫存告急信件給總部</button>
+                    <button class="email-notify-btn" onclick="sendEmailAlert()">📧 背景自動發送庫存告急信給總部</button>
                 </div>
             `;
 
@@ -806,19 +811,27 @@
         }
 
         function sendEmailAlert() {
-            let subject = encodeURIComponent("【⚠️ 風鳥堂庫存不足告急通知】林口中山店");
-            let bodyText = "【風鳥堂總部 - 庫存告急警報】\n分店：林口中山店\n以下品項庫存不足，請總部盡速安排補貨：\n\n";
-            
+            let details = "";
             inventoryData.forEach(p => {
                 let qty = orderQtyMap[p.id] || 0;
                 if ((p.stock - qty) <= 0) {
-                    bodyText += `- ${p.name} (規格: ${p.category}, 目前庫存: ${p.stock}, 欲叫: ${qty})\n`;
+                    details += `- ${p.name} (庫存: ${p.stock}, 欲叫: ${qty})\n`;
                 }
             });
 
-            bodyText += "\n此信件由風鳥堂智慧叫貨系統自動觸發。";
-            let mailtoUrl = `mailto:${HQ_EMAIL}?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
-            window.location.href = mailtoUrl;
+            let templateParams = {
+                store_name: currentUser ? currentUser.name : '林口中山店',
+                order_time: new Date().toLocaleString(),
+                order_details: details,
+                total_price: "0 (庫存告急警報)"
+            };
+
+            emailjs.send(EMAIL_SERVICE_ID, EMAIL_TEMPLATE_ID, templateParams)
+                .then(() => {
+                    alert('✅ 庫存告急信件已透過雲端自動發送給總部！');
+                }, (err) => {
+                    alert('❌ 發信失敗：' + JSON.stringify(err));
+                });
         }
 
         function submitOrderAndExport() {
@@ -844,23 +857,28 @@
             isSyncingStock = true;
             inventoryData = updatedItems;
 
+            let storeName = currentUser ? currentUser.name : '林口中山店';
+            let orderTime = new Date().toLocaleString();
+
             let orderRecord = {
-                store: currentUser ? currentUser.name : '林口中山店',
-                time: new Date().toLocaleString(),
+                store: storeName,
+                time: orderTime,
                 timestamp: Date.now(),
                 items: activeItems,
                 totalPrice: totalPrice
             };
 
+            // 寫入 Firebase 雲端
             db.collection('orders').add(orderRecord);
             db.collection('inventory').doc('main_stock').set({ items: updatedItems }).then(() => {
                 setTimeout(() => { isSyncingStock = false; }, 1200);
             });
 
+            // 產生 txt 檔案下載
             let fileContent = "====================================\n";
             fileContent += "   風鳥堂 - 分店叫貨通知單\n";
-            fileContent += "   分店：" + orderRecord.store + "\n";
-            fileContent += "   時間：" + orderRecord.time + "\n";
+            fileContent += "   分店：" + storeName + "\n";
+            fileContent += "   時間：" + orderTime + "\n";
             fileContent += "====================================\n\n";
 
             activeItems.forEach(i => {
@@ -874,26 +892,33 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `風鳥堂_${orderRecord.store}_叫貨單_${new Date().toISOString().slice(0,10)}.txt`;
+            a.download = `風鳥堂_${storeName}_叫貨單_${new Date().toISOString().slice(0,10)}.txt`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
 
-            let subject = encodeURIComponent(`【📦 風鳥堂分店叫貨單】${orderRecord.store} (總金額: $${totalPrice.toLocaleString()})`);
-            let bodyText = `【風鳥堂分店叫貨通知】\n分店：${orderRecord.store}\n叫貨時間：${orderRecord.time}\n\n叫貨明細：\n`;
+            // 組裝 EmailJS 參數並背景自動發信
+            let detailsText = "";
             activeItems.forEach(i => {
-                bodyText += `- ${i.name} × ${i.qty} (小計: $${i.subtotal})\n`;
+                detailsText += `- ${i.name} × ${i.qty} (小計: $${i.subtotal})\n`;
             });
-            bodyText += `\n總金額：$${totalPrice.toLocaleString()} 元\n(系統已同步扣除雲端庫存，並下載叫貨單文字檔)`;
 
-            let mailtoUrl = `mailto:${HQ_EMAIL}?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
-            
-            setTimeout(() => {
-                window.location.href = mailtoUrl;
-            }, 500);
+            let templateParams = {
+                store_name: storeName,
+                order_time: orderTime,
+                order_details: detailsText,
+                total_price: totalPrice.toLocaleString()
+            };
+
+            emailjs.send(EMAIL_SERVICE_ID, EMAIL_TEMPLATE_ID, templateParams)
+                .then(() => {
+                    console.log('Email sent successfully!');
+                }, (err) => {
+                    console.log('Email failed...', err);
+                });
 
             orderQtyMap = {};
-            alert('✅ 訂單已上傳雲端並扣除庫存，叫貨單已下載，即將自動轉發 Email 給總部！');
+            alert('✅ 訂單已上傳雲端、扣除庫存、下載叫貨單，並已透過背景自動發信通知總部！');
             switchView('records');
         }
     </script>

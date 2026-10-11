@@ -1,4 +1,772 @@
-function renderStockPage() {
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>風鳥堂 - 智慧叫貨與總部雲端連線系統</title>
+    <!-- Firebase SDK (v9 Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+    <!-- EmailJS SDK -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #3b2c24;
+            background-image: 
+                radial-gradient(#4d3c32 1.5px, transparent 1.5px),
+                radial-gradient(#4d3c32 1.5px, #3b2c24 1.5px);
+            background-size: 32px 32px;
+            background-position: 0 0, 16px 16px;
+            font-family: 'Noto Sans TC', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 15px;
+            color: #2c2523;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 480px;
+            height: 900px;
+            background: #fffdf8;
+            border-radius: 30px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            border: 8px solid #5c181f;
+        }
+
+        /* 登入畫面 */
+        .login-screen {
+            position: absolute;
+            inset: 0;
+            background: #fffdf8;
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .login-screen.hidden {
+            display: none;
+        }
+
+        .login-logo {
+            font-family: 'Noto Serif TC', serif;
+            font-size: 24px;
+            font-weight: 900;
+            color: #5c181f;
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+        }
+
+        .login-subtitle {
+            font-size: 12px;
+            color: #8c7662;
+            margin-bottom: 25px;
+            letter-spacing: 1px;
+        }
+
+        .login-input {
+            width: 100%;
+            padding: 12px 15px;
+            margin-bottom: 12px;
+            border: 1px solid #c8a362;
+            border-radius: 8px;
+            font-size: 14px;
+            background: #fcf8f0;
+            color: #2b221e;
+        }
+
+        .login-btn {
+            width: 100%;
+            background: #5c181f;
+            color: #f7e0b5;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 10px rgba(92,24,31,0.2);
+        }
+
+        .login-hint {
+            margin-top: 20px;
+            font-size: 11.5px;
+            color: #8c7662;
+            line-height: 1.6;
+            background: #f7f2ea;
+            padding: 10px;
+            border-radius: 6px;
+            width: 100%;
+            text-align: left;
+        }
+
+        .sync-badge {
+            display: inline-block;
+            background: #e6f4ea;
+            color: #137333;
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-top: 8px;
+            font-weight: bold;
+        }
+
+        /* App 內部樣式 */
+        .app-header {
+            background: #2b221e;
+            color: #f7e0b5;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #c8a362;
+            flex-shrink: 0;
+        }
+
+        .app-title h1 {
+            font-family: 'Noto Serif TC', serif;
+            font-size: 16px;
+            letter-spacing: 1px;
+        }
+
+        .app-title p {
+            font-size: 11px;
+            color: #c5b399;
+        }
+
+        .logout-btn {
+            background: transparent;
+            border: 1px solid #c5b399;
+            color: #c5b399;
+            padding: 4px 10px;
+            font-size: 11px;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: #f3ebd8;
+            padding: 8px 10px;
+            gap: 6px;
+            border-bottom: 1px solid #e2d4bc;
+            flex-shrink: 0;
+        }
+
+        .nav-btn {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 6px 0;
+            font-size: 12px;
+            color: #66554e;
+            border-radius: 15px;
+            cursor: pointer;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .nav-btn.active {
+            background: #5c181f;
+            color: #fffdf8;
+        }
+
+        .content-area {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: #fcf8f0;
+        }
+
+        .alert-banner {
+            background: #fdf2f2;
+            border: 1px solid #f5c6cb;
+            border-left: 4px solid #dc3545;
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            display: none;
+        }
+
+        .alert-banner.show {
+            display: block;
+        }
+
+        .alert-title {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #721c24;
+            margin-bottom: 2px;
+        }
+
+        .alert-desc {
+            font-size: 11.5px;
+            color: #842029;
+            line-height: 1.4;
+            margin-bottom: 6px;
+        }
+
+        .email-notify-btn {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            font-size: 11.5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .category-header {
+            font-family: 'Noto Serif TC', serif;
+            font-size: 14px;
+            font-weight: 700;
+            color: #5c181f;
+            margin: 15px 0 8px 2px;
+            padding-bottom: 4px;
+            border-bottom: 2px solid #ebdcc5;
+        }
+
+        .product-card {
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 10px 14px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #ebdcc5;
+        }
+
+        .product-info h3 {
+            font-size: 13.5px;
+            color: #2b221e;
+            margin-bottom: 2px;
+            font-weight: 700;
+        }
+
+        .product-info p {
+            font-size: 11px;
+            color: #8c7662;
+        }
+
+        .qty-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .qty-btn {
+            width: 26px;
+            height: 26px;
+            background: #f3ebd8;
+            border: 1px solid #d8caa8;
+            border-radius: 50%;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            color: #2b221e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .qty-num {
+            font-size: 13.5px;
+            font-weight: 700;
+            min-width: 20px;
+            text-align: center;
+            color: #5c181f;
+        }
+
+        .inv-card {
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 10px 14px;
+            margin-bottom: 8px;
+            border: 1px solid #ebdcc5;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .inv-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .inv-input-name {
+            flex-grow: 1;
+            padding: 5px 8px;
+            border: 1px solid #c8a362;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 13px;
+            color: #2b221e;
+            background: #fcf8f0;
+        }
+
+        .inv-input-small {
+            width: 75px;
+            padding: 5px;
+            text-align: center;
+            border: 1px solid #c8a362;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 13px;
+            color: #5c181f;
+            background: #fcf8f0;
+        }
+
+        .record-card {
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            border: 1px solid #ebdcc5;
+            font-size: 12.5px;
+        }
+
+        .record-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px dashed #e2d4bc;
+            font-weight: 700;
+            color: #5c181f;
+        }
+
+        .record-body {
+            color: #52463e;
+            line-height: 1.5;
+        }
+
+        .app-footer {
+            background: #fffdf8;
+            padding: 12px 20px;
+            border-top: 1px solid #e2d4bc;
+            flex-shrink: 0;
+        }
+
+        .cart-summary {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12.5px;
+            color: #52463e;
+        }
+
+        .submit-btn {
+            width: 100%;
+            background: #5c181f;
+            color: #f7e0b5;
+            border: none;
+            padding: 11px;
+            border-radius: 12px;
+            font-size: 13.5px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(92, 24, 31, 0.2);
+        }
+
+        .loading-spin {
+            text-align: center;
+            color: #8c7662;
+            font-size: 13px;
+            padding: 30px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- 登入畫面 -->
+        <div class="login-screen" id="loginScreen">
+            <div class="login-logo">風鳥堂叫貨系統</div>
+            <div class="login-subtitle">W.B.C MEMBER EXCLUSIVE</div>
+            
+            <input type="text" class="login-input" id="loginAccount" placeholder="請輸入分店代號或總部帳號">
+            <input type="password" class="login-input" id="loginPassword" placeholder="請輸入登入密碼">
+            <button class="login-btn" onclick="handleLogin()">登入系統</button>
+
+            <span class="sync-badge">☁️ 總部雲端自動發信已啟用</span>
+
+            <div class="login-hint">
+                💡 <strong>測試帳號說明：</strong><br>
+                • 分店登入：帳號 <code style="color:#5c181f">linkou</code> / 密碼 <code style="color:#5c181f">1234</code><br>
+                • 總部登入：帳號 <code style="color:#5c181f">admin</code> / 密碼 <code style="color:#5c181f">8888</code>
+            </div>
+        </div>
+
+        <!-- 頂部導覽 -->
+        <div class="app-header">
+            <div class="app-title">
+                <h1 id="appHeaderTitle">風鳥堂叫貨系統</h1>
+                <p id="systemModeLabel">分店模式 (總部雲端連線)</p>
+            </div>
+            <button class="logout-btn" onclick="handleLogout()">登出</button>
+        </div>
+
+        <!-- 功能分頁按鈕 -->
+        <div class="nav-tabs" id="navTabsContainer">
+            <button class="nav-btn active" id="tabOrder" onclick="switchView('order')">🛒 線上叫貨</button>
+            <button class="nav-btn" id="tabRecords" onclick="switchView('records')">📋 訂貨紀錄</button>
+            <button class="nav-btn" id="tabStock" onclick="switchView('stock')" style="display:none;">📦 庫存管理</button>
+        </div>
+
+        <!-- 主內容區 -->
+        <div class="content-area" id="mainContent">
+            <div class="loading-spin">☁️ 雲端資料同步中...</div>
+        </div>
+
+        <!-- 底部區塊 -->
+        <div class="app-footer" id="appFooter">
+            <div class="cart-summary">
+                <span>已選叫貨：<strong id="totalQuantity">0</strong> 件</span>
+                <span>總金額：<strong id="totalPrice" style="color:#5c181f;">$0</strong> 元</span>
+            </div>
+            <button class="submit-btn" onclick="submitOrderAndExport()">📥 送出訂單並自動發信給總部</button>
+        </div>
+    </div>
+
+    <script>
+        // EmailJS 初始化與配置
+        (function(){
+            emailjs.init("4BqFHzVumH46sFNtb");
+        })();
+
+        const EMAIL_SERVICE_ID = "service_7iin02f";
+        const EMAIL_TEMPLATE_ID = "template_yb1jcbk";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBAya9kkgVHTMsPLjn0llU1EZ3mLS37TpU",
+            authDomain: "windbirdsorder.firebaseapp.com",
+            projectId: "windbirdsorder",
+            storageBucket: "windbirdsorder.firebasestorage.app",
+            messagingSenderId: "781661616278",
+            appId: "1:781661616278:web:f374f38c9f260fa05baab7",
+            measurementId: "G-JBTTTELXXV"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        auth.signInAnonymously().catch(err => console.log("Auth error:", err));
+
+        // 完整叫貨品項清單（109項）
+        const fullCatalog = [
+            { id: 1, name: '伯爵紅茶', price: 375, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 2, name: '528 四季春綠', price: 245, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 3, name: '撻靼蕎麥綠', price: 764, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 4, name: '白桃蜜烏龍', price: 485, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 5, name: '綠國寶茶', price: 415, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 6, name: '南非國寶茶', price: 537, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 7, name: '貴妃荔枝紅', price: 432, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 8, name: '玫瑰鐵觀音', price: 325, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 9, name: '黃金金萱烏龍', price: 487, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 10, name: '覆盆子萊姆', price: 480, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 11, name: '黃金蕎麥茶', price: 538, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 12, name: '洋甘菊綠國寶', price: 400, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 13, name: '梔子花碧螺春', price: 425, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 14, name: '東方美人', price: 480, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 15, name: '山楂洛神', price: 325, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 16, name: '小菊烏龍(40)', price: 520, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 17, name: '玫瑰果粉', price: 285, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 18, name: '祇園抹茶粉', price: 525, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 19, name: '靜岡玉露抹茶粉', price: 979, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 20, name: '寒天凍粉', price: 380, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 21, name: '玫瑰鹽奶蓋粉', price: 315, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 22, name: '大和香賞抹茶粉', price: 312, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 23, name: '紅絲絨可可', price: 299, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 24, name: '老派紅茶', price: 110, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 25, name: '紅茶', price: 180, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 26, name: '綠茶', price: 210, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 27, name: '青茶', price: 260, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 28, name: '烏龍茶', price: 220, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 29, name: '湛藍茶(100)', price: 630, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 30, name: '奶精(藍牛)', price: 2160, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 31, name: '調和蜂蜜', price: 170, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 32, name: '①香茅汁', price: 240, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 33, name: '白梅', price: 130, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 34, name: '①寒天晶球', price: 205, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 35, name: '藍莓汁', price: 403, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 36, name: '桂圓紅棗', price: 350, category: '🌿 茶葉與粉類原物料', stock: 10 },
+            { id: 37, name: '黑糖薑母', price: 380, category: '🌿 茶葉與粉類原物料', stock: 10 },
+
+            { id: 38, name: '荔枝椰果', price: 190, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 39, name: '蘆薈', price: 350, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 40, name: '芋丁漿', price: 168, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 41, name: '蘋果醋', price: 300, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 42, name: '五葉松汁', price: 280, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 43, name: '①冬瓜蜜', price: 145, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 44, name: '①桑椹汁', price: 160, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 45, name: '①蔓越莓果乾', price: 462, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 46, name: '①水滴巧克力', price: 150, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 47, name: '黑糖蜜', price: 360, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 48, name: '可可粉 1kg', price: 320, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 49, name: '杏仁粉 1kg', price: 260, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 50, name: '咖啡粉', price: 400, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 51, name: '芒果爆珠', price: 320, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 52, name: '優格爆珠', price: 320, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 53, name: '波霸(箱)', price: 900, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 54, name: '珍珠(包)', price: 170, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 55, name: '玫瑰鹽(限定)', price: 195, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 56, name: '白蘭地', price: 450, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 57, name: '梅子汁', price: 198, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 58, name: '西谷米 2kg', price: 120, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 59, name: '亞麻紫薯粉', price: 257, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 60, name: '抹茶餅乾粒', price: 266, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 61, name: '白巧克力米菓', price: 199, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 62, name: '黑穀粉 600g', price: 380, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 63, name: '赤藻糖醇', price: 190, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 64, name: '桂花釀蜜', price: 155, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 65, name: '玫瑰釀蜜', price: 190, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 66, name: '1 杯袋(1kg)', price: 155, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 67, name: '2-3 杯袋(1kg)', price: 155, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 68, name: '4-5 杯袋(1kg)', price: 155, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 69, name: '6-7 杯袋(1kg)', price: 155, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 70, name: '8-12 杯袋(5kg)', price: 1480, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 71, name: '8-12 杯袋(10kg)', price: 2500, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 72, name: '8-12 杯袋(20kg)', price: 3950, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 73, name: '奶蓋杯蓋', price: 178, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 74, name: '封膜開封刀', price: 100, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 75, name: '四杯座 1500/箱', price: 75, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 76, name: '六杯座 1800/箱', price: 90, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 77, name: '吸管(冰砂)', price: 550, category: '🧋 果汁、配料與提袋', stock: 10 },
+            { id: 78, name: '吸管(粗)', price: 550, category: '🧋 果汁、配料與提袋', stock: 10 },
+
+            { id: 79, name: '封膜(霧膜大)', price: 910, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 80, name: '封膜(霧膜小)', price: 680, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 81, name: '750 紙杯(私版)', price: 2200, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 82, name: '750 紙杯(私版黑館)', price: 2800, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 83, name: '750 紙杯(95 公版)', price: 1740, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 84, name: '標籤紙 5 卷', price: 300, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 85, name: '感應紙 5 卷', price: 275, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 86, name: '熊貓專用 10 卷', price: 120, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 87, name: '清洗用酵素', price: 300, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 88, name: '制服(圓領 T)', price: 480, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 89, name: '制服(POLO)', price: 500, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 90, name: '制服(圍裙)', price: 500, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 91, name: '制服(襯衫)', price: 500, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 92, name: '制服(牛仔)', price: 550, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 93, name: '制服(長袖 T)', price: 680, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 94, name: '制服(防水保暖外套)', price: 800, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 95, name: '制服(帽子)', price: 350, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 96, name: '桶茶煮茶網', price: 3000, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 97, name: '13L 茶桶', price: 1650, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 98, name: '奶精匙', price: 60, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 99, name: '粉類匙', price: 30, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 100, name: '750 搖杯(不鏽鋼)', price: 475, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 101, name: '750PC 搖杯', price: 200, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 102, name: '茶量杯', price: 400, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 103, name: '果汁量杯', price: 150, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 104, name: '鹽漬櫻花 100g', price: 160, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 105, name: '櫻花餅乾粉', price: 266, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 106, name: '太妃糖紅茶', price: 382, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 107, name: '青堤烏龍', price: 305, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 108, name: '花果紅茶蜜', price: 285, category: '📦 包材、制服與器具', stock: 10 },
+            { id: 109, name: '蓮藕粉', price: 0, category: '📦 包材、制服與器具', stock: 10 }
+        ];
+
+        let inventoryData = [];
+        let orderQtyMap = {};
+        let orderHistory = [];
+        let currentUser = null;
+        let currentView = 'order';
+        let isSyncingStock = false;
+
+        // 雲端監聽庫存
+        db.collection('inventory').doc('main_stock').onSnapshot((doc) => {
+            if (isSyncingStock) return;
+            if (doc.exists && doc.data().items) {
+                inventoryData = doc.data().items;
+            } else {
+                inventoryData = fullCatalog;
+                db.collection('inventory').doc('main_stock').set({ items: fullCatalog });
+            }
+            refreshCurrentPage();
+        });
+
+        // 雲端監聽訂單紀錄
+        db.collection('orders').orderBy('timestamp', 'desc').onSnapshot((snapshot) => {
+            orderHistory = [];
+            snapshot.forEach(doc => {
+                orderHistory.push(doc.data());
+            });
+            if (currentView === 'records') renderRecordsPage();
+        });
+
+        function refreshCurrentPage() {
+            if (!currentUser) return;
+            if (currentView === 'order') renderOrderPage();
+            else if (currentView === 'stock') renderStockPage();
+            else if (currentView === 'records') renderRecordsPage();
+        }
+
+        function handleLogin() {
+            const acc = document.getElementById('loginAccount').value.trim();
+            const pwd = document.getElementById('loginPassword').value.trim();
+
+            if (acc === 'linkou' && pwd === '1234') {
+                currentUser = { role: 'branch', name: '林口中山店' };
+            } else if (acc === 'admin' && pwd === '8888') {
+                currentUser = { role: 'hq', name: '總管理處' };
+            } else {
+                alert('帳號或密碼錯誤！請重新輸入。');
+                return;
+            }
+
+            document.getElementById('loginScreen').classList.add('hidden');
+            initAppSession();
+        }
+
+        function handleLogout() {
+            currentUser = null;
+            document.getElementById('loginAccount').value = '';
+            document.getElementById('loginPassword').value = '';
+            document.getElementById('loginScreen').classList.remove('hidden');
+        }
+
+        function initAppSession() {
+            const titleEl = document.getElementById('appHeaderTitle');
+            const stockTab = document.getElementById('tabStock');
+
+            if (currentUser.role === 'hq') {
+                titleEl.innerText = "風鳥堂總部後台";
+                stockTab.style.display = 'block';
+                switchView('stock');
+            } else {
+                titleEl.innerText = "風鳥堂（林口中山店）";
+                stockTab.style.display = 'none';
+                switchView('order');
+            }
+        }
+
+        function switchView(view) {
+            currentView = view;
+            document.getElementById('tabOrder').classList.toggle('active', view === 'order');
+            document.getElementById('tabRecords').classList.toggle('active', view === 'records');
+            const stockBtn = document.getElementById('tabStock');
+            if(stockBtn) stockBtn.classList.toggle('active', view === 'stock');
+
+            const footer = document.getElementById('appFooter');
+            const label = document.getElementById('systemModeLabel');
+
+            if (view === 'order') {
+                label.innerText = "分店叫貨模式";
+                footer.style.display = 'block';
+                renderOrderPage();
+            } else if (view === 'records') {
+                label.innerText = "歷史訂貨紀錄";
+                footer.style.display = 'none';
+                renderRecordsPage();
+            } else if (view === 'stock') {
+                label.innerText = "總部庫存管理模式";
+                footer.style.display = 'none';
+                renderStockPage();
+            }
+        }
+
+        function renderOrderPage() {
+            const container = document.getElementById('mainContent');
+            let hasShortage = false;
+            let shortageDetails = '';
+
+            inventoryData.forEach(p => {
+                let qty = orderQtyMap[p.id] || 0;
+                let remaining = p.stock - qty;
+                if (remaining <= 0) {
+                    hasShortage = true;
+                    shortageDetails += `• <strong>${p.name}</strong> 庫存不足（雲端剩餘：${p.stock}，欲叫：${qty}）<br>`;
+                }
+            });
+
+            let html = `
+                <div class="alert-banner ${hasShortage ? 'show' : ''}">
+                    <div class="alert-title">⚠️ 總部雲端庫存不足警報</div>
+                    <div class="alert-desc">${shortageDetails}</div>
+                    <button class="email-notify-btn" onclick="sendEmailAlert()">📧 背景自動發送庫存告急信給總部</button>
+                </div>
+            `;
+
+            let currentCat = '';
+            inventoryData.forEach(p => {
+                if (p.category !== currentCat) {
+                    currentCat = p.category;
+                    html += `<div class="category-header">${currentCat}</div>`;
+                }
+
+                let qty = orderQtyMap[p.id] || 0;
+                let priceStr = p.price > 0 ? `$${p.price}` : '依市價';
+                let remaining = p.stock - qty;
+
+                html += `
+                    <div class="product-card">
+                        <div class="product-info">
+                            <h3>${p.name}</h3>
+                            <p>單價：${priceStr} | 庫存：<span style="color:${remaining<=0?'red':'#5c181f'}; font-weight:bold;">${remaining}</span></p>
+                        </div>
+                        <div class="qty-control">
+                            <button class="qty-btn" onclick="updateOrderQty(${p.id}, -1)">-</button>
+                            <span class="qty-num">${qty}</span>
+                            <button class="qty-btn" onclick="updateOrderQty(${p.id}, 1)">+</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+            updateSummary();
+        }
+
+        function updateOrderQty(id, change) {
+            let current = orderQtyMap[id] || 0;
+            orderQtyMap[id] = Math.max(0, current + change);
+            renderOrderPage();
+        }
+
+        function updateSummary() {
+            let totalQty = 0;
+            let totalPrice = 0;
+
+            inventoryData.forEach(p => {
+                let qty = orderQtyMap[p.id] || 0;
+                if (qty > 0) {
+                    totalQty += qty;
+                    totalPrice += (p.price * qty);
+                }
+            });
+
+            document.getElementById('totalQuantity').innerText = totalQty;
+            document.getElementById('totalPrice').innerText = `$${totalPrice.toLocaleString()}`;
+        }
+
+        function renderStockPage() {
             const container = document.getElementById('mainContent');
             let html = `<div style="font-size:12.5px; font-weight:700; color:#5c181f; margin-bottom:10px;">📦 總部統一雲端管理 (修改品名、單價或庫存後點擊空白處即自動儲存)</div>`;
             
@@ -35,3 +803,151 @@ function renderStockPage() {
                 setTimeout(() => { isSyncingStock = false; }, 800);
             });
         }
+
+        function renderRecordsPage() {
+            const container = document.getElementById('mainContent');
+            if (orderHistory.length === 0) {
+                container.innerHTML = `<div style="text-align:center; color:#8c7662; margin-top:40px;">目前尚無雲端訂貨紀錄</div>`;
+                return;
+            }
+
+            let html = '';
+            orderHistory.forEach((record) => {
+                let items = record.items || [];
+                let totalPrice = record.totalPrice || 0;
+
+                let itemsText = items.map(i => {
+                    let sub = i.subtotal !== undefined ? i.subtotal : (i.price * i.qty);
+                    return `${i.name} × ${i.qty} (小計: $${sub})`;
+                }).join('<br>');
+
+                html += `
+                    <div class="record-card">
+                        <div class="record-header">
+                            <span>訂單 (${record.store || '分店'})</span>
+                            <span>${record.time || '剛剛'}</span>
+                        </div>
+                        <div class="record-body">
+                            <strong>叫貨明細：</strong><br>${itemsText}<br>
+                            <div style="margin-top:6px; text-align:right; font-weight:bold; color:#5c181f;">總金額：$${totalPrice.toLocaleString()} 元</div>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function sendEmailAlert() {
+            let details = "";
+            inventoryData.forEach(p => {
+                let qty = orderQtyMap[p.id] || 0;
+                if ((p.stock - qty) <= 0) {
+                    details += `- ${p.name} (庫存: ${p.stock}, 欲叫: ${qty})\n`;
+                }
+            });
+
+            let templateParams = {
+                store_name: currentUser ? currentUser.name : '林口中山店',
+                order_time: new Date().toLocaleString(),
+                order_details: details,
+                total_price: "0 (庫存告急警報)"
+            };
+
+            emailjs.send(EMAIL_SERVICE_ID, EMAIL_TEMPLATE_ID, templateParams)
+                .then(() => {
+                    alert('✅ 庫存告急信件已透過雲端自動發送給總部！');
+                }, (err) => {
+                    alert('❌ 發信失敗：' + JSON.stringify(err));
+                });
+        }
+
+        function submitOrderAndExport() {
+            let activeItems = [];
+            let updatedItems = JSON.parse(JSON.stringify(inventoryData));
+            let totalPrice = 0;
+
+            inventoryData.forEach((p, idx) => {
+                let qty = orderQtyMap[p.id] || 0;
+                if (qty > 0) {
+                    let subtotal = p.price * qty;
+                    totalPrice += subtotal;
+                    activeItems.push({ name: p.name, price: p.price, qty: qty, subtotal: subtotal });
+                    updatedItems[idx].stock = Math.max(0, updatedItems[idx].stock - qty);
+                }
+            });
+
+            if (activeItems.length === 0) {
+                alert('請先選擇至少一項叫貨數量！');
+                return;
+            }
+
+            isSyncingStock = true;
+            inventoryData = updatedItems;
+
+            let storeName = currentUser ? currentUser.name : '林口中山店';
+            let orderTime = new Date().toLocaleString();
+
+            let orderRecord = {
+                store: storeName,
+                time: orderTime,
+                timestamp: Date.now(),
+                items: activeItems,
+                totalPrice: totalPrice
+            };
+
+            // 寫入 Firebase 雲端
+            db.collection('orders').add(orderRecord);
+            db.collection('inventory').doc('main_stock').set({ items: updatedItems }).then(() => {
+                setTimeout(() => { isSyncingStock = false; }, 1200);
+            });
+
+            // 產生 txt 檔案下載
+            let fileContent = "====================================\n";
+            fileContent += "   風鳥堂 - 分店叫貨通知單\n";
+            fileContent += "   分店：" + storeName + "\n";
+            fileContent += "   時間：" + orderTime + "\n";
+            fileContent += "====================================\n\n";
+
+            activeItems.forEach(i => {
+                fileContent += `[品名] ${i.name}\n`;
+                fileContent += `[數量] ${i.qty} | [小計] $${i.subtotal}\n`;
+                fileContent += "------------------------------------\n";
+            });
+            fileContent += `\n總計金額：$${totalPrice.toLocaleString()} 元\n`;
+
+            const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `風鳥堂_${storeName}_叫貨單_${new Date().toISOString().slice(0,10)}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            // 組裝 EmailJS 參數並背景自動發信
+            let detailsText = "";
+            activeItems.forEach(i => {
+                detailsText += `- ${i.name} × ${i.qty} (小計: $${i.subtotal})\n`;
+            });
+
+            let templateParams = {
+                store_name: storeName,
+                order_time: orderTime,
+                order_details: detailsText,
+                total_price: totalPrice.toLocaleString()
+            };
+
+            emailjs.send(EMAIL_SERVICE_ID, EMAIL_TEMPLATE_ID, templateParams)
+                .then(() => {
+                    console.log('Email sent successfully!');
+                }, (err) => {
+                    console.log('Email failed...', err);
+                });
+
+            orderQtyMap = {};
+            alert('✅ 訂單已上傳雲端、扣除庫存、下載叫貨單，並已透過背景自動發信通知總部！');
+            switchView('records');
+        }
+    </script>
+</body>
+</html>

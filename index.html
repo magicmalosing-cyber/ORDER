@@ -722,16 +722,24 @@
 
             let html = '';
             orderHistory.forEach((record) => {
-                let itemsText = record.items.map(i => `${i.name} × ${i.qty} (小計: $${i.subtotal})`).join('<br>');
+                // 防呆保護：避免舊訂單沒有 items 或 totalPrice 導致報錯
+                let items = record.items || [];
+                let totalPrice = record.totalPrice || 0;
+
+                let itemsText = items.map(i => {
+                    let sub = i.subtotal !== undefined ? i.subtotal : (i.price * i.qty);
+                    return `${i.name} × ${i.qty} (小計: $${sub})`;
+                }).join('<br>');
+
                 html += `
                     <div class="record-card">
                         <div class="record-header">
-                            <span>訂單 (${record.store})</span>
-                            <span>${record.time}</span>
+                            <span>訂單 (${record.store || '分店'})</span>
+                            <span>${record.time || '剛剛'}</span>
                         </div>
                         <div class="record-body">
                             <strong>叫貨明細：</strong><br>${itemsText}<br>
-                            <div style="margin-top:6px; text-align:right; font-weight:bold; color:#5c181f;">總金額：$${record.totalPrice.toLocaleString()} 元</div>
+                            <div style="margin-top:6px; text-align:right; font-weight:bold; color:#5c181f;">總金額：$${totalPrice.toLocaleString()} 元</div>
                         </div>
                     </div>
                 `;

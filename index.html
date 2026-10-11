@@ -774,8 +774,9 @@
                 items: activeItems,
                 totalPrice: totalPrice
             };
-
-            // 寫入雲端
+            
+            // 寫入雲端並立即更新本地端變數，防止監聽覆蓋
+            inventoryData = updatedItems;
             db.collection('orders').add(orderRecord);
             db.collection('inventory').doc('main_stock').set({ items: updatedItems });
 

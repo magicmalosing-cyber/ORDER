@@ -772,13 +772,13 @@
             
             inventoryData.forEach((p, idx) => {
                 html += `
-                    <div class="inv-card">
+                    <div class="inv-card" id="card_${p.id}">
                         <div class="inv-row">
-                            <input type="text" class="inv-input-name" value="${p.name}" onchange="updateProductField(${p.id}, 'name', this.value)" placeholder="品名">
+                            <input type="text" class="inv-input-name" id="name_${p.id}" value="${p.name}" onchange="updateProductField(${p.id}, 'name', this.value)" placeholder="品名">
                         </div>
                         <div class="inv-row">
-                            <span style="font-size:11.5px; color:#8c7662;">單價: $<input type="number" class="inv-input-small" value="${p.price}" onchange="updateProductField(${p.id}, 'price', this.value)"></span>
-                            <span style="font-size:11.5px; color:#8c7662;">庫存: <input type="number" class="inv-input-small" value="${p.stock}" onchange="updateProductField(${p.id}, 'stock', this.value)"></span>
+                            <span style="font-size:11.5px; color:#8c7662;">單價: $<input type="number" class="inv-input-small" id="price_${p.id}" value="${p.price}" onchange="updateProductField(${p.id}, 'price', this.value)"></span>
+                            <span style="font-size:11.5px; color:#8c7662;">庫存: <input type="number" class="inv-input-small" id="stock_${p.id}" value="${p.stock}" onchange="updateProductField(${p.id}, 'stock', this.value)"></span>
                         </div>
                     </div>
                 `;
@@ -786,20 +786,20 @@
             container.innerHTML = html;
         }
 
+        // 精準針對單一品項進行局部更新，絕不覆蓋其他品項
         function updateProductField(id, field, val) {
             let parsedVal = val;
             if (field === 'price') parsedVal = parseFloat(val) || 0;
             if (field === 'stock') parsedVal = parseInt(val) || 0;
 
-            const updatedItems = inventoryData.map(item => {
-                if (item.id === id) {
-                    return { ...item, [field]: parsedVal };
-                }
-                return item;
-            });
+            // 在本地陣列中精準修改該筆資料
+            const target = inventoryData.find(item => item.id === id);
+            if (target) {
+                target[field] = parsedVal;
+            }
 
             isSyncingStock = true;
-            db.collection('inventory').doc('main_stock').set({ items: updatedItems }).then(() => {
+            db.collection('inventory').doc('main_stock').set({ items: inventoryData }).then(() => {
                 setTimeout(() => { isSyncingStock = false; }, 800);
             });
         }

@@ -537,14 +537,17 @@
         let currentUser = null;
         let currentView = 'order';
 
-        db.collection('inventory').doc('main_stock').onSnapshot((doc) => {
-            if (doc.exists && doc.data().items) {
-                inventoryData = doc.data().items;
-            } else {
-                inventoryData = fullCatalog;
-                db.collection('inventory').doc('main_stock').set({ items: fullCatalog });
-            }
-            refreshCurrentPage();
+        // 直接強制更新為最新的 109 項全品項
+        inventoryData = fullCatalog;
+        db.collection('inventory').doc('main_stock').set({ items: fullCatalog });
+        refreshCurrentPage();
+
+        db.collection('orders').orderBy('timestamp', 'desc').onSnapshot((snapshot) => {
+            orderHistory = [];
+            snapshot.forEach(doc => {
+                orderHistory.push(doc.data());
+            });
+            if (currentView === 'records') renderRecordsPage();
         });
 
         db.collection('orders').orderBy('timestamp', 'desc').onSnapshot((snapshot) => {

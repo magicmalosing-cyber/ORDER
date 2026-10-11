@@ -197,6 +197,45 @@
             background: #fcf8f0;
         }
 
+        .alert-banner {
+            background: #fdf2f2;
+            border: 1px solid #f5c6cb;
+            border-left: 4px solid #dc3545;
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            display: none;
+        }
+
+        .alert-banner.show {
+            display: block;
+        }
+
+        .alert-title {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #721c24;
+            margin-bottom: 2px;
+        }
+
+        .alert-desc {
+            font-size: 11.5px;
+            color: #842029;
+            line-height: 1.4;
+            margin-bottom: 6px;
+        }
+
+        .email-notify-btn {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            font-size: 11.5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
         .category-header {
             font-family: 'Noto Serif TC', serif;
             font-size: 14px;
@@ -536,11 +575,11 @@
         let orderHistory = [];
         let currentUser = null;
         let currentView = 'order';
-        let isSyncingStock = false; // 防覆蓋鎖定開關
+        let isSyncingStock = false;
 
         // 雲端監聽庫存
         db.collection('inventory').doc('main_stock').onSnapshot((doc) => {
-            if (isSyncingStock) return; // 正在送出時暫時忽略雲端回傳
+            if (isSyncingStock) return;
             if (doc.exists && doc.data().items) {
                 inventoryData = doc.data().items;
             } else {
@@ -632,9 +671,27 @@
 
         function renderOrderPage() {
             const container = document.getElementById('mainContent');
-            let html = '';
-            let currentCat = '';
+            let hasShortage = false;
+            let shortageDetails = '';
 
+            inventoryData.forEach(p => {
+                let qty = orderQtyMap[p.id] || 0;
+                let remaining = p.stock - qty;
+                if (remaining <= 0) {
+                    hasShortage = true;
+                    shortageDetails += `• <strong>${p.name}</strong> 庫存不足（雲端剩餘：${p.stock}，欲叫：${qty}）<br>`;
+                }
+            });
+
+            let html = `
+                <div class="alert-banner ${hasShortage ? 'show' : ''}">
+                    <div class="alert-title">⚠️ 總部雲端庫存不足警報</div>
+                    <div class="alert-desc">${shortageDetails}</div>
+                    <button class="email-notify-btn" onclick="sendEmailAlert()">📧 一鍵發送庫存告急信件給總部</button>
+                </div>
+            `;
+
+            let currentCat = '';
             inventoryData.forEach(p => {
                 if (p.category !== currentCat) {
                     currentCat = p.category;
@@ -643,12 +700,13 @@
 
                 let qty = orderQtyMap[p.id] || 0;
                 let priceStr = p.price > 0 ? `$${p.price}` : '依市價';
+                let remaining = p.stock - qty;
 
                 html += `
                     <div class="product-card">
                         <div class="product-info">
                             <h3>${p.name}</h3>
-                            <p>單價：${priceStr} | 雲端庫存：<span style="color:#5c181f; font-weight:bold;">${p.stock}</span></p>
+                            <p>單價：${priceStr} | 庫存：<span style="color:${remaining<=0?'red':'#5c181f'}; font-weight:bold;">${remaining}</span></p>
                         </div>
                         <div class="qty-control">
                             <button class="qty-btn" onclick="updateOrderQty(${p.id}, -1)">-</button>
@@ -747,9 +805,25 @@
             container.innerHTML = html;
         }
 
+        function sendEmailAlert() {
+            let subject = encodeURIComponent("【⚠️ 風鳥堂庫存不足告急通知】林口中山店");
+            let bodyText = "【風鳥堂總部 - 庫存告急警報】\n分店：林口中山店\n以下品項庫存不足，請總部盡速安排補貨：\n\n";
+            
+            inventoryData.forEach(p => {
+                let qty = orderQtyMap[p.id] || 0;
+                if ((p.stock - qty) <= 0) {
+                    bodyText += `- ${p.name} (規格: ${p.category}, 目前庫存: ${p.stock}, 欲叫: ${qty})\n`;
+                }
+            });
+
+            bodyText += "\n此信件由風鳥堂智慧叫貨系統自動觸發。";
+            let mailtoUrl = `mailto:${HQ_EMAIL}?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+            window.location.href = mailtoUrl;
+        }
+
         function submitOrderAndExport() {
             let activeItems = [];
-            let updatedItems = JSON.parse(JSON.stringify(inventoryData)); // 深拷貝
+            let updatedItems = JSON.parse(JSON.stringify(inventoryData));
             let totalPrice = 0;
 
             inventoryData.forEach((p, idx) => {
@@ -767,7 +841,6 @@
                 return;
             }
 
-            // 鎖定監聽，防止被雲端舊資料覆蓋
             isSyncingStock = true;
             inventoryData = updatedItems;
 
@@ -779,13 +852,11 @@
                 totalPrice: totalPrice
             };
 
-            // 寫入雲端訂單並更新庫存
             db.collection('orders').add(orderRecord);
             db.collection('inventory').doc('main_stock').set({ items: updatedItems }).then(() => {
-                setTimeout(() => { isSyncingStock = false; }, 1200); // 解除鎖定
+                setTimeout(() => { isSyncingStock = false; }, 1200);
             });
 
-            // 產生 txt 檔案下載
             let fileContent = "====================================\n";
             fileContent += "   風鳥堂 - 分店叫貨通知單\n";
             fileContent += "   分店：" + orderRecord.store + "\n";
@@ -808,7 +879,6 @@
             a.click();
             document.body.removeChild(a);
 
-            // 自動準備寄送 Email 給總部
             let subject = encodeURIComponent(`【📦 風鳥堂分店叫貨單】${orderRecord.store} (總金額: $${totalPrice.toLocaleString()})`);
             let bodyText = `【風鳥堂分店叫貨通知】\n分店：${orderRecord.store}\n叫貨時間：${orderRecord.time}\n\n叫貨明細：\n`;
             activeItems.forEach(i => {

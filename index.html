@@ -450,8 +450,8 @@
 
         .submit-btn {
             width: 100%;
-            background: #5c181f;
-            color: #f7e0b5;
+            background: #06c755; /* LINE 經典綠色按鈕 */
+            color: #ffffff;
             border: none;
             padding: 11px;
             border-radius: 12px;
@@ -459,7 +459,11 @@
             font-weight: 700;
             letter-spacing: 1px;
             cursor: pointer;
-            box-shadow: 0 4px 12px rgba(92, 24, 31, 0.2);
+            box-shadow: 0 4px 12px rgba(6, 199, 85, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
         }
 
         .loading-spin {
@@ -482,7 +486,7 @@
             <input type="password" class="login-input" id="loginPassword" placeholder="請輸入登入密碼">
             <button class="login-btn" onclick="handleLogin()">登入系統</button>
 
-            <span class="sync-badge">☁️ 總部雲端自動發信已啟用</span>
+            <span class="sync-badge">☁️ 總部雲端與 LINE 直連已啟用</span>
 
             <div class="login-hint">
                 💡 <strong>測試帳號說明：</strong><br>
@@ -518,7 +522,7 @@
                 <span>已選叫貨：<strong id="totalQuantity">0</strong> 件</span>
                 <span>總金額：<strong id="totalPrice" style="color:#5c181f;">$0</strong> 元</span>
             </div>
-            <button class="submit-btn" onclick="submitOrderAndExport()">📥 送出訂單並自動發信給總部</button>
+            <button class="submit-btn" onclick="submitOrderAndExport()">📥 送出訂單並傳送至 LINE (總部叫貨)</button>
         </div>
     </div>
 
@@ -1041,7 +1045,7 @@
                 setTimeout(() => { isSyncingStock = false; }, 1200);
             });
 
-            // 產生 txt 檔案下載
+            // 1. 產生 txt 檔案下載留底
             let fileContent = "====================================\n";
             fileContent += "   風鳥堂 - 分店叫貨通知單\n";
             fileContent += "   分店：" + storeName + "\n";
@@ -1064,7 +1068,7 @@
             a.click();
             document.body.removeChild(a);
 
-            // 組裝 EmailJS 參數並背景自動發信
+            // 2. 組裝 EmailJS 參數並背景自動發信
             let detailsText = "";
             activeItems.forEach(i => {
                 detailsText += `- ${i.name} × ${i.qty} (小計: $${i.subtotal})\n`;
@@ -1084,8 +1088,30 @@
                     console.log('Email failed...', err);
                 });
 
+            // 3. 【方案 A】組裝專屬 LINE 分享訊息文字並喚醒 LINE App
+            let lineMessage = `📦 【風鳥堂 - 分店叫貨單】\n` +
+                              `------------------------------\n` +
+                              `🏪 分店：${storeName}\n` +
+                              `⏰ 時間：${orderTime}\n` +
+                              `------------------------------\n` +
+                              `📋 叫貨明細：\n`;
+
+            activeItems.forEach(i => {
+                lineMessage += `• ${i.name} x ${i.qty} ($${i.subtotal})\n`;
+            });
+
+            lineMessage += `------------------------------\n` +
+                           `💰 叫貨總金額：$${totalPrice.toLocaleString()} 元\n` +
+                           `請總部協助安排配送，謝謝！`;
+
+            const encodedLineMessage = encodeURIComponent(lineMessage);
+
             orderQtyMap = {};
-            alert('✅ 訂單已上傳雲端、扣除庫存、下載叫貨單，並已透過背景自動發信通知總部！');
+            alert('✅ 訂單已上傳雲端並完成備份！即將為您開啟 LINE 傳送給總部...');
+            
+            // 開啟 LINE 原生分享頁面
+            window.location.href = `https://line.me/R/share?text=${encodedLineMessage}`;
+
             switchView('records');
         }
     </script>
